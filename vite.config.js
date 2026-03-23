@@ -8,7 +8,17 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
-        changeOrigin: true
+        changeOrigin: true,
+        timeout: 60000, // 60s timeout for AI response
+      }
+    }
+  },
+  preview: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        timeout: 60000,
       }
     }
   }

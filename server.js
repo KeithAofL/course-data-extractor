@@ -20,32 +20,48 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Verify API Key
 if (!process.env.ANTHROPIC_API_KEY) {
+  process.env.ANTHROPIC_API_KEY = "MISSING_KEY"; // Placeholder to avoid crash, but catch below
   console.warn("WARNING: ANTHROPIC_API_KEY is not set in the .env file. The extraction endpoint will fail.");
+} else {
+  console.log("ANTHROPIC_API_KEY is loaded.");
 }
 
 // Proxy endpoint to Anthropic
 app.post('/api/extract', async (req, res) => {
+  const reqSize = JSON.stringify(req.body).length;
+  console.log(`[API Request] Size: ${Math.round(reqSize / 1024)}KB`);
+
+  if (process.env.ANTHROPIC_API_KEY === "MISSING_KEY") {
+    return res.status(401).json({ error: { message: "Anthropic API key is not configured on the server." } });
+  }
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify(req.body),
     });
-    
-    const data = await response.json();
+
+    const data = await response.json().catch(async (e) => {
+      const errText = await response.text();
+      console.error(`Error parsing Anthropic response: ${errText.substring(0, 200)}`);
+      throw new Error(`Invalid JSON from Anthropic: ${errText.substring(0, 100)}`);
+    });
+
     if (!response.ok) {
-      console.error("Anthropic API error:", data);
+      console.error("Anthropic API error:", JSON.stringify(data, null, 2));
       return res.status(response.status).json(data);
     }
-    
+
+    console.log(`[API Success] Token usage: ${JSON.stringify(data.usage || "unknown")}`);
     res.json(data);
   } catch (error) {
-    console.error("Proxy error:", error);
-    res.status(500).json({ error: { message: "Internal server error connecting to AI service." } });
+    console.error("Proxy error:", error.name, ":", error.message);
+    res.status(500).json({ error: { message: `Internal server error: ${error.message}` } });
   }
 });
 

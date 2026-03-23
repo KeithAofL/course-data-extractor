@@ -47,6 +47,10 @@ async function extractTextFromHtml(file) {
   return doc.body?.innerText || doc.body?.textContent || "";
 }
 
+async function extractTextFromCsv(file) {
+  return await file.text();
+}
+
 const AI_PROMPT = `You are a specialist data extraction assistant for UK qualifications and training courses.
 
 Your task: extract EVERY course/qualification from the text below. Do not miss any.
@@ -158,8 +162,11 @@ function isPdf(file) {
 function isHtml(file) {
   return file?.type === "text/html" || /\.(html?|mhtml?)$/i.test(file?.name || "");
 }
+function isCsv(file) {
+  return file?.type === "text/csv" || file?.name?.toLowerCase().endsWith(".csv");
+}
 function isValid(file) {
-  return isPdf(file) || isHtml(file);
+  return isPdf(file) || isHtml(file) || isCsv(file);
 }
 
 function toCSV(courses, multiFile) {
@@ -209,7 +216,7 @@ export default function CourseExtractor() {
     const invalid = Array.from(fileList).filter((f) => !isValid(f));
 
     if (files.length === 0) {
-      setErrors(["No valid PDF or HTML files selected."]);
+      setErrors(["No valid PDF, HTML, or CSV files selected."]);
       return;
     }
 
@@ -231,7 +238,11 @@ export default function CourseExtractor() {
       try {
         setStage(`Reading ${file.name}...`);
         setProcessed(idx);
-        const text = isPdf(file) ? await extractTextFromPdf(file) : await extractTextFromHtml(file);
+        let text = "";
+        if (isPdf(file)) text = await extractTextFromPdf(file);
+        else if (isHtml(file)) text = await extractTextFromHtml(file);
+        else if (isCsv(file)) text = await extractTextFromCsv(file);
+
         if (!text.trim()) {
           newErrors.push(`${file.name}: no text could be extracted`);
           continue;
@@ -281,12 +292,12 @@ export default function CourseExtractor() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#e85d26" }} />
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 500, letterSpacing: 1.5, textTransform: "uppercase", color: "#888" }}>
-              PDF / HTML → Table
+              PDF / HTML / CSV → Table
             </span>
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>Course Data Extractor</h1>
           <p style={{ color: "#777", marginTop: 6, fontSize: 14, lineHeight: 1.5 }}>
-            Upload one or more webpage PDFs or HTML files — extracts Course Titles, Levels & Qualification Numbers.
+            Upload one or more webpage PDFs, HTML files, or CSV files — extracts Course Titles, Levels & Qualification Numbers.
           </p>
         </div>
 
@@ -303,7 +314,7 @@ export default function CourseExtractor() {
             transition: "all 0.2s", marginBottom: 24,
           }}
         >
-          <input ref={inputRef} type="file" accept=".pdf,.html,.htm,.mhtml" multiple onChange={onFileChange} style={{ display: "none" }} />
+          <input ref={inputRef} type="file" accept=".pdf,.html,.htm,.mhtml,.csv" multiple onChange={onFileChange} style={{ display: "none" }} />
           <div style={{ fontSize: 36, marginBottom: 8 }}>📄</div>
           <div style={{ fontWeight: 600, fontSize: 15 }}>
             {fileNames.length > 0
@@ -311,7 +322,7 @@ export default function CourseExtractor() {
               : "Drop files here or click to browse"}
           </div>
           <div style={{ color: "#999", fontSize: 13, marginTop: 4 }}>
-            PDF and HTML — select multiple at once
+            PDF, HTML, and CSV — select multiple at once
           </div>
         </div>
 
