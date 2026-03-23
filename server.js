@@ -18,21 +18,20 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Verify API Key
-if (!process.env.ANTHROPIC_API_KEY) {
-  process.env.ANTHROPIC_API_KEY = "MISSING_KEY"; // Placeholder to avoid crash, but catch below
-  console.warn("WARNING: ANTHROPIC_API_KEY is not set in the .env file. The extraction endpoint will fail.");
-} else {
-  console.log("ANTHROPIC_API_KEY is loaded.");
+if (process.env.ANTHROPIC_API_KEY) {
+  console.log("ANTHROPIC_API_KEY env var loaded (will be overridden by UI key if provided).");
 }
 
 // Proxy endpoint to Anthropic
 app.post('/api/extract', async (req, res) => {
-  const reqSize = JSON.stringify(req.body).length;
+  const { apiKey, ...anthropicBody } = req.body;
+  const resolvedKey = apiKey || process.env.ANTHROPIC_API_KEY;
+
+  const reqSize = JSON.stringify(anthropicBody).length;
   console.log(`[API Request] Size: ${Math.round(reqSize / 1024)}KB`);
 
-  if (process.env.ANTHROPIC_API_KEY === "MISSING_KEY") {
-    return res.status(401).json({ error: { message: "Anthropic API key is not configured on the server." } });
+  if (!resolvedKey) {
+    return res.status(401).json({ error: { message: "Anthropic API key is not configured." } });
   }
 
   try {
@@ -40,10 +39,10 @@ app.post('/api/extract', async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "x-api-key": resolvedKey,
         "anthropic-version": "2023-06-01"
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(anthropicBody),
     });
 
     const data = await response.json().catch(async (e) => {

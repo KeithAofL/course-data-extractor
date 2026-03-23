@@ -106,12 +106,13 @@ function chunkText(text, maxChars = 12000, overlap = 1500) {
   return chunks;
 }
 
-async function extractCoursesFromChunk(chunk) {
+async function extractCoursesFromChunk(chunk, apiKey) {
   const resp = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-3-haiku-20240307",
+      apiKey,
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 4000,
       messages: [{ role: "user", content: AI_PROMPT + chunk }],
     }),
@@ -145,12 +146,12 @@ function deduplicateCourses(courses) {
   });
 }
 
-async function extractCoursesWithAI(text, onChunkProgress) {
+async function extractCoursesWithAI(text, apiKey, onChunkProgress) {
   const chunks = chunkText(text);
   const allCourses = [];
   for (let i = 0; i < chunks.length; i++) {
     if (onChunkProgress) onChunkProgress(i + 1, chunks.length);
-    const result = await extractCoursesFromChunk(chunks[i]);
+    const result = await extractCoursesFromChunk(chunks[i], apiKey);
     allCourses.push(...result);
   }
   return deduplicateCourses(allCourses);
@@ -209,7 +210,19 @@ export default function CourseExtractor() {
   const [dragOver, setDragOver] = useState(false);
   const [processed, setProcessed] = useState(0);
   const [total, setTotal] = useState(0);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("anthropic_api_key") || "");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [keyVisible, setKeyVisible] = useState(false);
   const inputRef = useRef();
+
+  const handleSaveKey = () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem("anthropic_api_key", trimmed);
+    setApiKey(trimmed);
+    setApiKeyInput("");
+    setKeyVisible(false);
+  };
 
   const processFiles = useCallback(async (fileList) => {
     const files = Array.from(fileList).filter(isValid);
@@ -217,6 +230,11 @@ export default function CourseExtractor() {
 
     if (files.length === 0) {
       setErrors(["No valid PDF, HTML, or CSV files selected."]);
+      return;
+    }
+
+    if (!apiKey) {
+      setErrors(["Please enter and save your Anthropic API key before extracting."]);
       return;
     }
 
@@ -254,7 +272,7 @@ export default function CourseExtractor() {
             setStage(`Extracting courses from ${file.name}...`);
           }
         };
-        const result = await extractCoursesWithAI(text, onChunk);
+        const result = await extractCoursesWithAI(text, apiKey, onChunk);
         const tagged = result.map((c) => ({ ...c, source: file.name }));
         allCourses.push(...tagged);
         setCourses([...allCourses]);
@@ -267,7 +285,7 @@ export default function CourseExtractor() {
     setErrors(newErrors);
     setLoading(false);
     setStage("");
-  }, []);
+  }, [apiKey]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();
@@ -299,6 +317,42 @@ export default function CourseExtractor() {
           <p style={{ color: "#777", marginTop: 6, fontSize: 14, lineHeight: 1.5 }}>
             Upload one or more webpage PDFs, HTML files, or CSV files — extracts Course Titles, Levels & Qualification Numbers.
           </p>
+        </div>
+
+        {/* API Key */}
+        <div style={{ marginBottom: 24, background: "#fff", border: "1px solid #e0dfdc", borderRadius: 10, padding: "14px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>API Key</span>
+              {apiKey
+                ? <span style={{ fontSize: 12, color: "#16a34a", fontFamily: "'DM Mono', monospace" }}>✓ saved</span>
+                : <span style={{ fontSize: 12, color: "#dc2626" }}>not set</span>}
+            </div>
+            <button
+              onClick={() => setKeyVisible((v) => !v)}
+              style={{ fontSize: 12, color: "#888", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+            >
+              {keyVisible ? "hide" : apiKey ? "change" : "enter key"}
+            </button>
+          </div>
+          {keyVisible && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <input
+                type="password"
+                placeholder="sk-ant-..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
+                style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #ccc", fontSize: 13, fontFamily: "'DM Mono', monospace" }}
+              />
+              <button
+                onClick={handleSaveKey}
+                style={{ background: "#e85d26", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              >
+                Save
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Upload zone */}
